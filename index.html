@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (배포용)</title>
+  <title>PDF 실시간 번역 뷰어 (공개 버전)</title>
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#333; }
     *{box-sizing:border-box}
@@ -59,18 +59,15 @@
   </div>
 
   <script type="module">
-    /* ① 네 Google Apps Script /exec 주소 */
-    const APPS_SCRIPT_URL = "여기에_네_GAS_exec_URL";
+    /* ← 네 GAS 웹앱 /exec 주소 (지금 값은 네가 준 주소) */
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby0HztO0l8d7jElgunieZ-KlSrd07-yt7kxQKDXQ3T2VdpldvLM_s0TFaVyhmax2YXRYA/exec";
 
-    /* ② GAS 코드의 SECRET 과 동일하게 */
-    const SECRET = "여기에_임의의_긴_비밀문자열";
-
-    /* PDF.js를 CDN에서 로드 (GitHub Pages는 HTTPS라 CORS 문제 없음) */
+    /* PDF.js 모듈 & 워커 (깃허브 페이지/HTTPS에서 CORS OK) */
     import * as pdfjsLib from 'https://unpkg.com/pdfjs-dist@4.4.175/build/pdf.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://unpkg.com/pdfjs-dist@4.4.175/build/pdf.worker.mjs';
 
-    // DOM 참조
+    // DOM
     const fileInput = document.getElementById('file-input');
     const pdfViewer = document.getElementById('pdf-viewer');
     const translationOutput = document.getElementById('translation-output');
@@ -82,7 +79,6 @@
 
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
 
-    // 파일 선택 → 로드
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file || file.type !== 'application/pdf') { alert('PDF 파일만 선택하세요.'); return; }
@@ -104,7 +100,6 @@
       fr.readAsArrayBuffer(file);
     });
 
-    // 페이지 렌더 + 번역
     async function renderPage(num) {
       if (!pdfDoc || isRendering) return;
       isRendering = true;
@@ -146,7 +141,6 @@
       nextPageBtn.disabled = num >= (pdfDoc?.numPages || 0);
     }
 
-    // 긴 텍스트 청크 처리
     function splitIntoChunks(text, maxLen = 4500) {
       const sentences = text.split(/(?<=[.!?。！？])\s+/);
       const chunks = []; let buf = '';
@@ -160,13 +154,12 @@
       return chunks;
     }
 
-    // 번역 호출 (POST JSON + 비밀키)
     async function translateText(textToTranslate, targetLang) {
       try {
         const res = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: textToTranslate, targetLang, secret: SECRET })
+          body: JSON.stringify({ text: textToTranslate, targetLang })
         });
         if (!res.ok) throw new Error(`서버 응답 오류: ${res.status}`);
         const data = await res.json();
