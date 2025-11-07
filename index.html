@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어</title>
+  <title>PDF 실시간 번역 뷰어 (JSONP 우회)</title>
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#333; }
     *{box-sizing:border-box}
@@ -48,7 +48,7 @@
   </div>
 
   <div id="container">
-    <div id="pdf-viewER-container">
+    <div id="pdf-viewer-container">
       <div class="panel-header">원본 PDF</div>
       <div id="pdf-viewer"><div class="loader-text">오른쪽에서 PDF 파일을 선택하세요.</div></div>
     </div>
@@ -59,10 +59,10 @@
   </div>
 
   <script type="module">
-    /* 최신 /exec 주소 (네가 준 URL) */
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVuzDBnRocjzNvvsCwtNvL6FwKKrI1uGNlhlqk0X25t7DXJBDzbZdxR0LHvVWaOtgDSQ/exec";
+    /* 네 최신 /exec 주소 */
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
 
-    /* 같은 출처의 pdf.js 사용 → CORS 문제 없음 */
+    /* 같은 출처 pdf.js */
     import * as pdfjsLib from './lib/pdf.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
 
@@ -78,6 +78,35 @@
 
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
 
+    // JSONP 유틸 (CORS 우회)
+    function jsonp(url, params = {}) {
+      return new Promise((resolve, reject) => {
+        const cbName = '__jsonp_cb_' + Math.random().toString(36).slice(2);
+        const qs = new URLSearchParams({...params, callback: cbName, _t: Date.now()}).toString();
+        const script = document.createElement('script');
+        script.src = url + '?' + qs;
+        script.async = true;
+
+        window[cbName] = (data) => { cleanup(); resolve(data); };
+        script.onerror = () => { cleanup(); reject(new Error('JSONP load error')); };
+        function cleanup() { delete window[cbName]; script.remove(); }
+
+        document.head.appendChild(script);
+      });
+    }
+
+    async function translateText(textToTranslate, targetLang) {
+      try {
+        const data = await jsonp(APPS_SCRIPT_URL, { text: textToTranslate, targetLang });
+        if (data && data.translatedText) return data.translatedText;
+        return data && data.error ? ('번역 오류: ' + data.error) : '';
+      } catch (e) {
+        console.error('번역 JSONP 오류:', e);
+        return '';
+      }
+    }
+
+    // 파일 선택
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file || file.type !== 'application/pdf') { alert('PDF 파일만 선택하세요.'); return; }
@@ -99,6 +128,7 @@
       fr.readAsArrayBuffer(file);
     });
 
+    // 페이지 렌더 + 번역
     async function renderPage(num) {
       if (!pdfDoc || isRendering) return;
       isRendering = true;
@@ -116,7 +146,6 @@
 
         translationOutput.innerHTML = '<div class="loader-text">번역 중...</div>';
 
-        // 텍스트 추출
         const textContent = await page.getTextContent();
         const text = (textContent.items.map(it => it.str).join(' ') || '').trim();
 
@@ -160,29 +189,6 @@
       }
       if (buf) chunks.push(buf);
       return chunks;
-    }
-
-    // ★ 프리플라이트(OPTIONS) 회피: x-www-form-urlencoded 로 POST
-    async function translateText(textToTranslate, targetLang) {
-      try {
-        const body =
-          'text=' + encodeURIComponent(textToTranslate) +
-          '&targetLang=' + encodeURIComponent(targetLang);
-
-        const res = await fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-          body
-        });
-
-        if (!res.ok) throw new Error(`서버 응답 오류: ${res.status}`);
-        const data = await res.json();
-        if (data.translatedText) return data.translatedText;
-        return data.error ? `번역 오류: ${data.error}` : '';
-      } catch (err) {
-        console.error('번역 API 호출 오류:', err);
-        return '';
-      }
     }
   </script>
 </body>
