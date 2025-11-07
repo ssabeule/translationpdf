@@ -3,12 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (심플·가독성·JSONP)</title>
+  <title>PDF 실시간 번역 뷰어 (가독성+줌·JSONP)</title>
+
+  <!-- 캐시 약화 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#222; }
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;margin:0;display:flex;flex-direction:column;height:100vh;background:var(--bg);color:var(--text)}
-    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);justify-content:space-between}
+    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);justify-content:space-between;position:sticky;top:0;z-index:5}
     #brand{display:flex;align-items:center;gap:12px}
     #brand h1{margin:0;font-size:1.06rem;font-weight:700}
     #meta{font-size:.85rem;color:#666}
@@ -22,21 +28,36 @@
     select{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
     #container{flex:1;display:flex;gap:14px;padding:14px;min-height:0}
     #pdf-viewer-container,#translation-container{flex:1;background:var(--panel);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:0;overflow:hidden}
-    .panel-header{padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-weight:700;color:#555}
+    .panel-header{padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-weight:700;color:#555;display:flex;align-items:center;gap:10px;justify-content:space-between}
+    #pdf-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     #pdf-viewer{flex:1;overflow:auto;padding:10px}
     canvas{display:block;max-width:100%;box-shadow:0 0 10px rgba(0,0,0,.08)}
     #translation-output{flex:1;overflow:auto;padding:18px;display:flex;justify-content:center}
-    .translation-inner{width:100%;max-width:var(--colWidth, 820px);font-size:var(--fontSize, 18px);line-height:1.8;letter-spacing:.2px;white-space:pre-wrap;word-break:keep-all;color:#222}
-    .translation-inner p{margin:0 0 1em}
+    .translation-inner{width:100%;max-width:var(--colWidth, 840px);font-size:var(--fontSize, 18px);line-height:1.85;letter-spacing:.2px;white-space:pre-wrap;word-break:keep-all;color:#222}
+    .translation-inner p{margin:0 0 1.05em}
     .muted{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
     footer{padding:10px 16px;color:#666;font-size:.85rem;border-top:1px solid var(--border);text-align:right;background:#fff}
+    .badge{font-size:.8rem;color:#333;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:4px 8px}
   </style>
+
+  <script>
+    // 자동 버전 쿼리스트링 부착 → 캐시 우회
+    const BUILD_VERSION = '2025-11-08-zoom-01';
+    (function ensureVersionParam(){
+      const url = new URL(location.href);
+      const v = url.searchParams.get('v');
+      if (v !== BUILD_VERSION) {
+        url.searchParams.set('v', BUILD_VERSION);
+        location.replace(url.toString());
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="header">
     <div id="brand">
       <h1>PDF 실시간 번역 뷰어</h1>
-      <span id="meta">제작자 문태정 · v2025-11-08-01</span>
+      <span id="meta">제작자 문태정 · v<span id="ver"></span></span>
     </div>
     <div id="controls">
       <label class="btn" for="file-input">PDF 파일 선택</label>
@@ -62,14 +83,25 @@
       </div>
       <div class="pill">
         <span>열폭</span>
-        <input id="col-width" type="range" min="640" max="1000" value="820">
+        <input id="col-width" type="range" min="640" max="1040" value="840">
       </div>
     </div>
   </div>
 
   <div id="container">
     <div id="pdf-viewer-container">
-      <div class="panel-header">원본 PDF</div>
+      <div class="panel-header">
+        <span>원본 PDF</span>
+        <!-- 🔍 확대/축소 툴바 -->
+        <div id="pdf-toolbar">
+          <button id="zoom-out" class="btn" title="축소">－</button>
+          <span class="badge"><span id="zoom-percent">100</span>%</span>
+          <button id="zoom-in" class="btn" title="확대">＋</button>
+          <button id="zoom-reset" class="btn" title="100%로">100%</button>
+          <button id="zoom-fit" class="btn" title="가로폭 맞춤">맞춤</button>
+          <span class="badge" id="zoom-mode">수동</span>
+        </div>
+      </div>
       <div id="pdf-viewer"><div class="muted">오른쪽에서 PDF 파일을 선택하세요.</div></div>
     </div>
 
@@ -83,16 +115,20 @@
     </div>
   </div>
 
-  <footer>제작자 문태정 · v2025-11-08-01</footer>
+  <footer>제작자 문태정 · v<span id="ver2"></span></footer>
 
   <script type="module">
-    /* ★ 최신 /exec 주소: 네가 방금 준 URL을 그대로 넣어둠 */
+    // 버전 텍스트 표시
+    document.getElementById('ver').textContent =
+      document.getElementById('ver2').textContent = (window.BUILD_VERSION || 'dev');
+
+    /* ★ 최신 /exec 주소(네 배포 주소로 유지) */
     const APPS_SCRIPT_URL =
       "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
 
-    /* 같은 출처 pdf.js (lib/ 폴더의 같은 버전 파일 2개 필요: pdf.mjs, pdf.worker.mjs) */
-    import * as pdfjsLib from './lib/pdf.mjs';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
+    /* 같은 출처 pdf.js (lib: pdf.mjs, pdf.worker.mjs) */
+    import * as pdfjsLib from './lib/pdf.mjs?v=' + (window.BUILD_VERSION || 'dev');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs?v=' + (window.BUILD_VERSION || 'dev');
 
     // DOM
     const fileInput = document.getElementById('file-input');
@@ -106,9 +142,20 @@
     const fontSizeRange = document.getElementById('font-size');
     const colWidthRange = document.getElementById('col-width');
 
-    let pdfDoc = null, currentPageNum = 1, isRendering = false;
+    // 🔍 줌 관련
+    const zoomOutBtn = document.getElementById('zoom-out');
+    const zoomInBtn  = document.getElementById('zoom-in');
+    const zoomResetBtn = document.getElementById('zoom-reset');
+    const zoomFitBtn = document.getElementById('zoom-fit');
+    const zoomPercent = document.getElementById('zoom-percent');
+    const zoomModeBadge = document.getElementById('zoom-mode');
 
-    // 가독성 조절
+    let pdfDoc = null, currentPageNum = 1, isRendering = false;
+    let scale = 1.0;                 // 현재 배율(1.0 = 100%)
+    let scaleMode = 'manual';        // 'manual' | 'fit-width'
+    const SCALE_MIN = 0.5, SCALE_MAX = 3.0, SCALE_STEP = 0.1;
+
+    // 가독성 슬라이더
     function applyReaderStyle(){
       translationInner.style.setProperty('--fontSize', fontSizeRange.value + 'px');
       translationInner.style.setProperty('--colWidth', colWidthRange.value + 'px');
@@ -117,7 +164,7 @@
     colWidthRange.addEventListener('input', applyReaderStyle);
     applyReaderStyle();
 
-    // ==== JSONP 유틸 (CORS 완전 우회) ====
+    // JSONP 유틸 (CORS 우회)
     function jsonp(url, params = {}){
       return new Promise((resolve, reject)=>{
         const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
@@ -132,12 +179,8 @@
     }
 
     async function translateText(textToTranslate, targetLang){
-      // JSONP GET 호출 → 응답은 { translatedText: "..." } 형식
       try{
-        const data = await jsonp(APPS_SCRIPT_URL, {
-          text: textToTranslate,
-          targetLang
-        });
+        const data = await jsonp(APPS_SCRIPT_URL, { text: textToTranslate, targetLang });
         if (data && data.translatedText) return data.translatedText;
         if (data && data.error) return '번역 오류: ' + data.error;
         return '';
@@ -160,7 +203,10 @@
           pdfDoc = await task.promise;
           pageCountSpan.textContent = pdfDoc.numPages;
           currentPageNum = 1;
-          await renderPage(currentPageNum);
+
+          // 첫 페이지에서 가로폭 맞춤 계산
+          scaleMode = 'fit-width';
+          await renderPage(currentPageNum); // renderPage 내부에서 fit-width 계산
         } catch (err) {
           console.error('PDF 로딩 오류:', err);
           translationInner.innerHTML = '<div class="muted">PDF 로딩 실패.</div>';
@@ -169,6 +215,22 @@
       fr.readAsArrayBuffer(file);
     });
 
+    // 배율 표시/모드 배지
+    function updateZoomUI(){
+      zoomPercent.textContent = Math.round(scale * 100);
+      zoomModeBadge.textContent = (scaleMode === 'fit-width') ? '맞춤' : '수동';
+    }
+
+    function clamp(num, min, max){ return Math.max(min, Math.min(max, num)); }
+
+    // fit-width 계산 : 페이지 원본 폭 대비 viewport컨테이너 폭
+    async function computeFitWidthScale(page){
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      const containerWidth = document.getElementById('pdf-viewer').clientWidth - 4; // 패딩여백 여유
+      const s = clamp(containerWidth / baseViewport.width, SCALE_MIN, SCALE_MAX);
+      return s || 1.0;
+    }
+
     // 페이지 렌더
     async function renderPage(num) {
       if (!pdfDoc || isRendering) return;
@@ -176,8 +238,13 @@
 
       try {
         const page = await pdfDoc.getPage(num);
-        const viewport = page.getViewport({ scale: 1.8 });
 
+        // 모드가 맞춤이면 스케일 재계산
+        if (scaleMode === 'fit-width') {
+          scale = await computeFitWidthScale(page);
+        }
+
+        const viewport = page.getViewport({ scale });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = viewport.width; canvas.height = viewport.height;
@@ -190,30 +257,26 @@
         pageNumSpan.textContent = String(num);
         prevPageBtn.disabled = (num <= 1);
         nextPageBtn.disabled = (num >= pdfDoc.numPages);
+        updateZoomUI();
 
-        // 텍스트 추출 → 예쁘게 정리 → 번역(JSONP)
+        // 텍스트 추출 → 레이아웃 보정 → 번역(JSONP)
         translationInner.innerHTML = `<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
         const textContent = await page.getTextContent();
-        const raw = (textContent.items.map(it => it.str).join(' ') || '').trim();
-
-        if (!raw) {
-          translationInner.innerHTML = '<div class="muted">이 페이지에는 번역할 텍스트가 없습니다.</div>';
-        } else {
-          const pretty = prettify(raw);
-          const chunks = splitIntoChunks(pretty, 4500);
-          const out = [];
-          for (let i = 0; i < chunks.length; i++) {
-            const part = await translateText(chunks[i], targetLangSelect.value);
-            out.push(part || '');
-            translationInner.innerHTML = `<div class="muted">번역 중... (${i+1}/${chunks.length})</div>`;
-          }
-          const html = out.join('\n')
-            .split(/\n{2,}/)
-            .map(p => `<p>${escapeHtml(p.trim())}</p>`)
-            .join('');
-          translationInner.innerHTML = html || '<div class="muted">빈 결과</div>';
-          document.getElementById('translation-output').scrollTop = 0;
+        const laidOut = buildLaidOutText(textContent);
+        const chunks = splitIntoChunks(laidOut, 4500);
+        const out = [];
+        for (let i = 0; i < chunks.length; i++) {
+          const part = await translateText(chunks[i], targetLangSelect.value);
+          out.push(part || '');
+          translationInner.innerHTML = `<div class="muted">번역 중... (${i+1}/${chunks.length})</div>`;
         }
+        const html = out.join('\n')
+          .split(/\n{2,}/)
+          .map(p => `<p>${escapeHtml(p.trim())}</p>`)
+          .join('');
+        translationInner.innerHTML = html || '<div class="muted">빈 결과</div>';
+        document.getElementById('translation-output').scrollTop = 0;
+
       } catch (err) {
         console.error(`페이지 ${num} 표시/번역 실패:`, err);
         translationInner.innerHTML = `<div class="muted">페이지 ${num} 표시/번역 실패</div>`;
@@ -222,50 +285,114 @@
       }
     }
 
-    // 버튼/키보드 네비
+    // 네비
     prevPageBtn.addEventListener('click', () => { if (currentPageNum > 1) renderPage(currentPageNum - 1); });
     nextPageBtn.addEventListener('click', () => { if (pdfDoc && currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
     targetLangSelect.addEventListener('change', () => { if (pdfDoc) renderPage(currentPageNum); });
+
+    // 🔍 줌 버튼/단축키
+    zoomInBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
+    zoomOutBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
+    zoomResetBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); });
+    zoomFitBtn.addEventListener('click',   ()=>{ scaleMode='fit-width'; renderPage(currentPageNum); });
+
+    // Ctrl + 마우스휠로 확대/축소
+    document.getElementById('pdf-viewer').addEventListener('wheel', (e)=>{
+      if (!pdfDoc) return;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        scaleMode = 'manual';
+        const delta = (e.deltaY < 0 ? +SCALE_STEP : -SCALE_STEP);
+        scale = clamp(scale + delta, SCALE_MIN, SCALE_MAX);
+        renderPage(currentPageNum);
+      }
+    }, { passive:false });
+
+    // 창 크기 변경 시 맞춤 모드면 재렌더
+    window.addEventListener('resize', ()=>{
+      if (pdfDoc && scaleMode === 'fit-width') renderPage(currentPageNum);
+    });
+
     window.addEventListener('keydown', (e) => {
       if (!pdfDoc) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); nextPageBtn.click(); }
       if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   { e.preventDefault(); prevPageBtn.click(); }
+      if (e.key === '+') { scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); }
+      if (e.key === '-') { scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); }
+      if (e.key === '0') { scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); }
+      if (e.key.toLowerCase() === 'f') { scaleMode='fit-width'; renderPage(currentPageNum); } // f: 맞춤
       if (e.key === 'Home') { e.preventDefault(); renderPage(1); }
       if (e.key === 'End')  { e.preventDefault(); renderPage(pdfDoc.numPages); }
     });
 
-    // 유틸: 문장/문단 가다듬기
-    function splitIntoChunks(text, maxLen = 4500) {
-      const sentences = text.split(/(?<=[.!?。！？])\s+/);
-      const chunks = []; let buf = '';
-      for (const s of sentences) {
-        if ((buf + ' ' + s).trim().length <= maxLen) buf = (buf ? buf + ' ' : '') + s;
-        else {
-          if (buf) chunks.push(buf);
-          if (s.length > maxLen) {
-            for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen));
-            buf = '';
-          } else buf = s;
+    // ====== 가독성 유틸 ======
+    function buildLaidOutText(textContent){
+      const items = textContent.items || [];
+      const lines = [];
+      let buf = '';
+
+      const pushLine = () => {
+        const t = buf.trim();
+        if (t.length) lines.push(t);
+        buf = '';
+      };
+
+      for (const it of items) {
+        const s = it.str || '';
+        if (!s) continue;
+        if (buf && !/[\s-]$/.test(buf) && !/^[\s,.;:!?)]/.test(s)) buf += ' ';
+        buf += s;
+        if (it.hasEOL) pushLine();
+      }
+      pushLine();
+
+      // 하이픈 줄바꿈 보정
+      for (let i=0;i<lines.length-1;i++){
+        const a = lines[i], b = lines[i+1];
+        if (/[A-Za-z가-힣0-9]-$/.test(a) && /^[a-zA-Z가-힣0-9]/.test(b)) {
+          lines[i]   = a.replace(/-$/, '') + b.replace(/^\s+/, '');
+          lines.splice(i+1, 1);
+          i--;
         }
       }
-      if (buf) chunks.push(buf);
-      return chunks;
+
+      const paras = [];
+      let pbuf = '';
+      const isList = (t)=>/^\s*(?:[\u2022•\-–]|\d+\.)\s+/.test(t);
+      const endsWithSentencePunct = (t)=>/[.!?。！？…’”)"\]]$/.test(t);
+      const pushPara = ()=>{ const t = pbuf.trim(); if (t) paras.push(t); pbuf = ''; };
+
+      for (let i=0;i<lines.length;i++){
+        const L = lines[i].trim();
+        if (!L) { pushPara(); continue; }
+        if (isList(L)) { pushPara(); paras.push(L); continue; }
+        if (pbuf) pbuf += ' ' + L; else pbuf = L;
+        const next = lines[i+1]?.trim() || '';
+        if (!next || isList(next) || endsWithSentencePunct(L)) pushPara();
+      }
+      pushPara();
+
+      return paras.map(x => x.replace(/\s+/g,' ').trim()).join('\n\n');
     }
-    function prettify(t){
-      let s = t.replace(/\s+/g,' ').trim();
-      s = s.replace(/([.!?。！？])\s+/g, '$1  \n')   // 문장 뒤 두 칸+줄바꿈
-           .replace(/([:;])\s+/g, '$1 \n')          // 콜론/세미콜론 뒤 줄바꿈
-           .replace(/\s+([)\]])/g, '$1');           // 닫는 괄호 앞 공백 제거
-      // 너무 짧은 줄은 앞줄에 붙이기
-      s = s.split('\n').reduce((acc, line) => {
-        const L = line.trim();
-        if (!acc.length) return [L];
-        if (L.length < 40 && !/[.!?。！？]$/.test(L)) acc[acc.length-1] += ' ' + L;
-        else acc.push(L);
-        return acc;
-      }, []).join('\n\n');
-      return s;
+
+    function splitIntoChunks(text, maxLen = 4500) {
+      const paragraphs = text.split(/\n{2,}/);
+      const out = [];
+      for (let p of paragraphs) {
+        p = p.trim();
+        if (!p) continue;
+        if (p.length <= maxLen) { out.push(p); continue; }
+        const sents = p.split(/(?<=[.!?。！？…])\s+/);
+        let buf = '';
+        for (const s of sents) {
+          if ((buf + ' ' + s).trim().length <= maxLen) buf = (buf ? buf + ' ' : '') + s;
+          else { if (buf) out.push(buf); buf = s; }
+        }
+        if (buf) out.push(buf);
+      }
+      return out.length ? out : [text.slice(0, maxLen)];
     }
+
     function escapeHtml(str){
       return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     }
