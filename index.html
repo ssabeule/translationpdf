@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (심플·가독성 업)</title>
+  <title>PDF 실시간 번역 뷰어 (심플·가독성·JSONP)</title>
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#222; }
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;margin:0;display:flex;flex-direction:column;height:100vh;background:var(--bg);color:var(--text)}
-    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
-    #header h1{margin:0;font-size:1.05rem;font-weight:700}
+    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);justify-content:space-between}
+    #brand{display:flex;align-items:center;gap:12px}
+    #brand h1{margin:0;font-size:1.06rem;font-weight:700}
+    #meta{font-size:.85rem;color:#666}
     #controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     #controls input[type="file"]{display:none}
     .btn{background:var(--brand);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem}
@@ -27,11 +29,15 @@
     .translation-inner{width:100%;max-width:var(--colWidth, 820px);font-size:var(--fontSize, 18px);line-height:1.8;letter-spacing:.2px;white-space:pre-wrap;word-break:keep-all;color:#222}
     .translation-inner p{margin:0 0 1em}
     .muted{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
+    footer{padding:10px 16px;color:#666;font-size:.85rem;border-top:1px solid var(--border);text-align:right;background:#fff}
   </style>
 </head>
 <body>
   <div id="header">
-    <h1>PDF 실시간 번역 뷰어</h1>
+    <div id="brand">
+      <h1>PDF 실시간 번역 뷰어</h1>
+      <span id="meta">제작자 문태정 · v2025-11-08-01</span>
+    </div>
     <div id="controls">
       <label class="btn" for="file-input">PDF 파일 선택</label>
       <input type="file" id="file-input" accept=".pdf"/>
@@ -77,12 +83,14 @@
     </div>
   </div>
 
+  <footer>제작자 문태정 · v2025-11-08-01</footer>
+
   <script type="module">
-    /* ★ 네 최신 /exec 주소로 바꿔 넣기 */
+    /* ★ 최신 /exec 주소: 네가 방금 준 URL을 그대로 넣어둠 */
     const APPS_SCRIPT_URL =
       "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
 
-    /* 같은 출처 pdf.js (lib/ 폴더의 같은 버전 파일 2개 필요) */
+    /* 같은 출처 pdf.js (lib/ 폴더의 같은 버전 파일 2개 필요: pdf.mjs, pdf.worker.mjs) */
     import * as pdfjsLib from './lib/pdf.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
 
@@ -98,7 +106,6 @@
     const fontSizeRange = document.getElementById('font-size');
     const colWidthRange = document.getElementById('col-width');
 
-    // 상태
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
 
     // 가독성 조절
@@ -110,24 +117,32 @@
     colWidthRange.addEventListener('input', applyReaderStyle);
     applyReaderStyle();
 
-    // 간단 POST (x-www-form-urlencoded) → 사전검사(프리플라이트) 회피
-    async function translateText(textToTranslate, targetLang) {
-      if (!APPS_SCRIPT_URL.includes('/exec')) {
-        return '오류: APPS_SCRIPT_URL에 최신 /exec 주소를 넣어주세요.';
-      }
-      try {
-        const body = 'text=' + encodeURIComponent(textToTranslate) +
-                     '&targetLang=' + encodeURIComponent(targetLang);
-        const res = await fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-          body
+    // ==== JSONP 유틸 (CORS 완전 우회) ====
+    function jsonp(url, params = {}){
+      return new Promise((resolve, reject)=>{
+        const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
+        const qs = new URLSearchParams({ ...params, callback: cb, _t: Date.now() }).toString();
+        const s = document.createElement('script');
+        s.src = url + '?' + qs; s.async = true;
+        window[cb] = (data)=>{ cleanup(); resolve(data); };
+        s.onerror = ()=>{ cleanup(); reject(new Error('JSONP load error')); };
+        function cleanup(){ delete window[cb]; s.remove(); }
+        document.head.appendChild(s);
+      });
+    }
+
+    async function translateText(textToTranslate, targetLang){
+      // JSONP GET 호출 → 응답은 { translatedText: "..." } 형식
+      try{
+        const data = await jsonp(APPS_SCRIPT_URL, {
+          text: textToTranslate,
+          targetLang
         });
-        if (!res.ok) throw new Error('서버 응답 오류: ' + res.status);
-        const data = await res.json();
-        return data.translatedText || (data.error ? ('번역 오류: ' + data.error) : '');
-      } catch (err) {
-        console.error('번역 API 호출 오류:', err);
+        if (data && data.translatedText) return data.translatedText;
+        if (data && data.error) return '번역 오류: ' + data.error;
+        return '';
+      }catch(err){
+        console.error('번역 JSONP 호출 오류:', err);
         return '번역 실패: ' + err.message;
       }
     }
@@ -176,7 +191,7 @@
         prevPageBtn.disabled = (num <= 1);
         nextPageBtn.disabled = (num >= pdfDoc.numPages);
 
-        // 텍스트 추출 → 예쁘게 정리 → 번역
+        // 텍스트 추출 → 예쁘게 정리 → 번역(JSONP)
         translationInner.innerHTML = `<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
         const textContent = await page.getTextContent();
         const raw = (textContent.items.map(it => it.str).join(' ') || '').trim();
