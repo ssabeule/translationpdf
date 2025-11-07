@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (진단 모드)</title>
+  <title>PDF 실시간 번역 뷰어</title>
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#333; }
     *{box-sizing:border-box}
@@ -24,13 +24,7 @@
     #translation-output{flex:1;padding:16px;overflow:auto;font-size:1.02rem;line-height:1.7;white-space:pre-wrap;color:#333}
     .loader-text{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
     canvas{display:block;margin:0 auto;max-width:100%;box-shadow:0 0 10px rgba(0,0,0,.08)}
-    #debug{position:fixed;right:12px;bottom:12px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:10px 12px;max-width:420px;font-size:.85rem;line-height:1.4;white-space:pre-wrap}
-    #debug b{color:#333}
-    #show-raw{margin-left:8px}
-    textarea#raw{width:100%;height:120px;margin-top:8px;display:none}
   </style>
-  <!-- OCR (필요시) -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <div id="header">
@@ -50,23 +44,11 @@
         <option value="zh-CN">중국어(간체)</option>
         <option value="es">스페인어</option>
       </select>
-      <label style="display:flex;align-items:center;gap:6px">
-        OCR:
-        <select id="ocr-lang">
-          <option value="auto">자동(없으면만 OCR)</option>
-          <option value="eng">eng</option>
-          <option value="kor">kor</option>
-          <option value="jpn">jpn</option>
-          <option value="chi_sim">chi_sim</option>
-          <option value="spa">spa</option>
-        </select>
-      </label>
-      <button id="show-raw">원문 보기</button>
     </div>
   </div>
 
   <div id="container">
-    <div id="pdf-viewer-container">
+    <div id="pdf-viewER-container">
       <div class="panel-header">원본 PDF</div>
       <div id="pdf-viewer"><div class="loader-text">오른쪽에서 PDF 파일을 선택하세요.</div></div>
     </div>
@@ -76,21 +58,11 @@
     </div>
   </div>
 
-  <!-- 상태 패널 -->
-  <div id="debug">
-    <div><b>Stage:</b> idle</div>
-    <div><b>Text length:</b> -</div>
-    <div><b>Used OCR:</b> -</div>
-    <div><b>API status:</b> -</div>
-    <div><b>Last error:</b> -</div>
-    <textarea id="raw" readonly></textarea>
-  </div>
-
   <script type="module">
-    /* 최신 /exec 주소 넣기 */
-    const APPS_SCRIPT_URL = "여기에_네_GAS_exec_URL";
+    /* 최신 /exec 주소 (네가 준 URL) */
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyVuzDBnRocjzNvvsCwtNvL6FwKKrI1uGNlhlqk0X25t7DXJBDzbZdxR0LHvVWaOtgDSQ/exec";
 
-    /* 같은 출처의 pdf.js 사용 */
+    /* 같은 출처의 pdf.js 사용 → CORS 문제 없음 */
     import * as pdfjsLib from './lib/pdf.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
 
@@ -103,30 +75,9 @@
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
     const targetLangSelect = document.getElementById('target-lang');
-    const ocrLangSelect = document.getElementById('ocr-lang');
-    const dbg = {
-      stage: document.querySelector('#debug div:nth-child(1)'),
-      len: document.querySelector('#debug div:nth-child(2)'),
-      ocr: document.querySelector('#debug div:nth-child(3)'),
-      api: document.querySelector('#debug div:nth-child(4)'),
-      err: document.querySelector('#debug div:nth-child(5)'),
-      raw: document.getElementById('raw'),
-    };
-    const showRawBtn = document.getElementById('show-raw');
 
-    let pdfDoc = null, currentPageNum = 1, isRendering = false, lastRaw = '';
+    let pdfDoc = null, currentPageNum = 1, isRendering = false;
 
-    showRawBtn.onclick = () => {
-      dbg.raw.style.display = dbg.raw.style.display === 'none' ? 'block' : 'none';
-    };
-
-    function setStage(s){ dbg.stage.innerHTML = `<b>Stage:</b> ${s}`; }
-    function setLen(n){ dbg.len.innerHTML = `<b>Text length:</b> ${n}`; }
-    function setOCR(v){ dbg.ocr.innerHTML = `<b>Used OCR:</b> ${v}`; }
-    function setAPI(v){ dbg.api.innerHTML = `<b>API status:</b> ${v}`; }
-    function setErr(v){ dbg.err.innerHTML = `<b>Last error:</b> ${v}`; }
-
-    // 파일 선택 → 로드
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file || file.type !== 'application/pdf') { alert('PDF 파일만 선택하세요.'); return; }
@@ -135,76 +86,55 @@
         const arr = new Uint8Array(evt.target.result);
         translationOutput.innerHTML = '<div class="loader-text">PDF 파일을 불러오는 중...</div>';
         try {
-          setStage('loading pdf');
           const loadingTask = pdfjsLib.getDocument(arr);
           pdfDoc = await loadingTask.promise;
           pageCountSpan.textContent = pdfDoc.numPages;
           currentPageNum = 1;
           await renderPage(currentPageNum);
         } catch (err) {
-          console.error(err); setErr(err.message||String(err));
+          console.error('PDF 로딩 오류:', err);
           translationOutput.innerHTML = '<div class="loader-text">PDF 로딩 실패.</div>';
         }
       };
       fr.readAsArrayBuffer(file);
     });
 
-    // 페이지 렌더 + 텍스트/OCR + 번역
     async function renderPage(num) {
       if (!pdfDoc || isRendering) return;
       isRendering = true;
       updatePageButtons(num);
       try {
-        setStage(`render page ${num}`);
         const page = await pdfDoc.getPage(num);
         const viewport = page.getViewport({ scale: 1.8 });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = viewport.width; canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport }).promise;
+
         pdfViewer.innerHTML = ''; pdfViewer.appendChild(canvas);
         pageNumSpan.textContent = String(num);
 
-        setStage('extract text');
-        translationOutput.innerHTML = '<div class="loader-text">텍스트 추출 중...</div>';
-
-        let text = '';
-        try {
-          const tc = await page.getTextContent();
-          text = tc.items.map(it => it.str).join(' ').trim();
-        } catch {}
-        setLen(text.length);
-
-        let usedOCR = 'no';
-        if (!text || ocrLangSelect.value !== 'auto') {
-          setStage('OCR');
-          usedOCR = ocrLangSelect.value === 'auto' ? 'auto-detect' : ocrLangSelect.value;
-          try {
-            const { data:{ text: t } } = await Tesseract.recognize(canvas, ocrLangSelect.value === 'auto' ? 'eng' : ocrLangSelect.value);
-            if ((t||'').trim().length > 0) text = t.trim();
-          } catch (e) {
-            console.error('OCR error', e); setErr('OCR: '+(e.message||e));
-          }
-        }
-        setOCR(usedOCR);
-
-        lastRaw = text||''; dbg.raw.value = lastRaw;
-        if (!text) { setStage('done'); translationOutput.innerHTML = '<div class="loader-text">읽을 텍스트가 없습니다.</div>'; isRendering=false; return; }
-
-        setStage('translate');
         translationOutput.innerHTML = '<div class="loader-text">번역 중...</div>';
-        const chunks = splitIntoChunks(text, 4500);
-        const out = [];
-        for (let i = 0; i < chunks.length; i++) {
-          const part = await translateText(chunks[i], targetLangSelect.value);
-          out.push(part || '');
-          translationOutput.innerHTML = `<div class="loader-text">번역 중... (${i+1}/${chunks.length})</div>`;
+
+        // 텍스트 추출
+        const textContent = await page.getTextContent();
+        const text = (textContent.items.map(it => it.str).join(' ') || '').trim();
+
+        if (!text) {
+          translationOutput.innerHTML = '<div class="loader-text">이 페이지에는 번역할 텍스트가 없습니다.</div>';
+        } else {
+          const chunks = splitIntoChunks(text, 4500);
+          const out = [];
+          for (let i = 0; i < chunks.length; i++) {
+            const part = await translateText(chunks[i], targetLangSelect.value);
+            out.push(part || '');
+            translationOutput.innerHTML = `<div class="loader-text">번역 중... (${i+1}/${chunks.length})</div>`;
+          }
+          translationOutput.textContent = out.join('\n');
         }
-        translationOutput.textContent = out.join('\n');
-        setStage('done');
       } catch (err) {
-        console.error(err); setErr(err.message||String(err));
-        translationOutput.innerHTML = `<div class="loader-text">페이지 표시/번역 실패</div>`;
+        console.error(`페이지 ${num} 렌더링 오류:`, err);
+        translationOutput.innerHTML = `<div class="loader-text">페이지 ${num} 표시/번역 실패</div>`;
       } finally { isRendering = false; }
     }
 
@@ -218,35 +148,42 @@
       const chunks = []; let buf = '';
       for (const s of sentences) {
         if ((buf + ' ' + s).trim().length <= maxLen) buf = (buf ? buf + ' ' : '') + s;
-        else { if (buf) chunks.push(buf);
-               if (s.length > maxLen) { for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen)); buf = ''; }
-               else buf = s; }
+        else {
+          if (buf) chunks.push(buf);
+          if (s.length > maxLen) {
+            for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen));
+            buf = '';
+          } else {
+            buf = s;
+          }
+        }
       }
       if (buf) chunks.push(buf);
       return chunks;
     }
 
+    // ★ 프리플라이트(OPTIONS) 회피: x-www-form-urlencoded 로 POST
     async function translateText(textToTranslate, targetLang) {
       try {
+        const body =
+          'text=' + encodeURIComponent(textToTranslate) +
+          '&targetLang=' + encodeURIComponent(targetLang);
+
         const res = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: textToTranslate, targetLang })
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body
         });
-        setAPI(`${res.status} ${res.statusText}`);
-        const data = await res.json().catch(()=> ({}));
+
+        if (!res.ok) throw new Error(`서버 응답 오류: ${res.status}`);
+        const data = await res.json();
         if (data.translatedText) return data.translatedText;
-        if (data.error) { setErr('API: '+data.error); }
-        return '';
+        return data.error ? `번역 오류: ${data.error}` : '';
       } catch (err) {
-        setAPI('network error'); setErr(err.message||String(err));
+        console.error('번역 API 호출 오류:', err);
         return '';
       }
     }
-
-    prevPageBtn.addEventListener('click', () => { if (currentPageNum > 1) { currentPageNum--; renderPage(currentPageNum); } });
-    nextPageBtn.addEventListener('click', () => { if (pdfDoc && currentPageNum < pdfDoc.numPages) { currentPageNum++; renderPage(currentPageNum); } });
-    targetLangSelect.addEventListener('change', () => { if (pdfDoc) renderPage(currentPageNum); });
   </script>
 </body>
 </html>
