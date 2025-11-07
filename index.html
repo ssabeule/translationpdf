@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (업로드 안정화)</title>
+  <title>PDF 실시간 번역 뷰어 (업로드 버튼 고정)</title>
 
   <!-- 캐시 약화(선택) -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -14,7 +14,7 @@
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#222; }
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;margin:0;display:flex;flex-direction:column;height:100vh;background:var(--bg);color:var(--text)}
-    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);justify-content:space-between;position:sticky;top:0;z-index:5}
+    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);justify-content:space-between;position:sticky;top:0;z-index:10}
     #brand{display:flex;align-items:center;gap:12px}
     #brand h1{margin:0;font-size:1.06rem;font-weight:700}
     #meta{font-size:.85rem;color:#666}
@@ -41,8 +41,8 @@
   </style>
 
   <script>
-    // 캐시 버전(모듈 임포트에만 사용)
-    window.BUILD_VERSION = '2025-11-08-fix-upload-01';
+    // 모듈 캐시 버전 (lib import에만 사용)
+    window.BUILD_VERSION = '2025-11-08-fix-upload-click-02';
   </script>
 </head>
 <body>
@@ -51,8 +51,8 @@
       <h1>PDF 실시간 번역 뷰어</h1>
       <span id="meta">제작자 문태정 · v<span id="ver"></span></span>
     </div>
-    <div id="controls">
-      <!-- 실제 input은 화면에서 숨기고, 버튼으로 클릭 유도 -->
+    <div id="controls" style="position:relative; z-index:11">
+      <!-- 진짜 input은 숨기고 버튼으로 트리거 -->
       <input type="file" id="file-input" class="hide" accept=".pdf,application/pdf"/>
       <button id="open-file" class="btn" type="button">PDF 파일 선택</button>
 
@@ -110,19 +110,11 @@
   <footer>제작자 문태정 · v<span id="ver2"></span></footer>
 
   <script type="module">
-    // 버전 텍스트
+    // --- 상단 버전 텍스트 ---
     document.getElementById('ver').textContent =
       document.getElementById('ver2').textContent = (window.BUILD_VERSION || 'dev');
 
-    /* ★ 네 최신 /exec 주소 */
-    const APPS_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
-
-    /* 같은 출처 pdf.js (lib: pdf.mjs, pdf.worker.mjs) */
-    import * as pdfjsLib from './lib/pdf.mjs?v=' + (window.BUILD_VERSION || 'dev');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs?v=' + (window.BUILD_VERSION || 'dev');
-
-    // DOM
+    // === 전역 DOM ===
     const fileInput = document.getElementById('file-input');
     const openFileBtn = document.getElementById('open-file');
     const pdfViewer = document.getElementById('pdf-viewer');
@@ -142,15 +134,21 @@
     const zoomPercent = document.getElementById('zoom-percent');
     const zoomModeBadge = document.getElementById('zoom-mode');
 
+    // === 상태 ===
+    let pdfjsLib = null;      // 동적 import 후 채워짐
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
     let scale = 1.0;
-    let scaleMode = 'manual';        // 'manual' | 'fit-width'
+    let scaleMode = 'manual'; // 'manual' | 'fit-width'
     const SCALE_MIN = 0.5, SCALE_MAX = 3.0, SCALE_STEP = 0.1;
 
-    // 파일 선택 버튼 → input 클릭
+    // ★ 최신 /exec 주소 (네 GAS 웹앱)
+    const APPS_SCRIPT_URL =
+      "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
+
+    // 1) 버튼은 무조건 동작
     openFileBtn.addEventListener('click', () => fileInput.click());
 
-    // 가독성 슬라이더
+    // 2) 가독성 슬라이더
     function applyReaderStyle(){
       translationInner.style.setProperty('--fontSize', fontSizeRange.value + 'px');
       translationInner.style.setProperty('--colWidth', colWidthRange.value + 'px');
@@ -159,7 +157,7 @@
     colWidthRange.addEventListener('input', applyReaderStyle);
     applyReaderStyle();
 
-    // JSONP (CORS 우회)
+    // 3) JSONP (CORS 우회)
     function jsonp(url, params = {}){
       return new Promise((resolve, reject)=>{
         const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
@@ -172,7 +170,6 @@
         document.head.appendChild(s);
       });
     }
-
     async function translateText(textToTranslate, targetLang){
       try{
         const data = await jsonp(APPS_SCRIPT_URL, { text: textToTranslate, targetLang });
@@ -185,40 +182,57 @@
       }
     }
 
-    // 파일 선택
-    fileInput.addEventListener('change', (e) => {
+    // 4) pdf.js 동적 로더 (여기서 실패해도 버튼은 이미 동작함)
+    async function ensurePdfJs(){
+      if (pdfjsLib) return pdfjsLib;
+      try{
+        pdfjsLib = await import('./lib/pdf.mjs?v=' + (window.BUILD_VERSION || 'dev'));
+        pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs?v=' + (window.BUILD_VERSION || 'dev');
+        return pdfjsLib;
+      }catch(err){
+        console.error('pdf.js 로드 실패:', err);
+        alert('pdf.js 파일을 찾을 수 없습니다. 저장소에 lib/pdf.mjs 와 lib/pdf.worker.mjs 가 있는지 확인하세요.');
+        throw err;
+      }
+    }
+
+    // 5) 파일 선택 → 그 때 pdf.js 로드
+    fileInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       if (file.type && !/pdf/i.test(file.type)) { alert('PDF 파일만 선택하세요.'); return; }
 
-      const fr = new FileReader();
-      fr.onload = async (evt) => {
-        const arr = new Uint8Array(evt.target.result);
-        translationInner.innerHTML = '<div class="muted">PDF 파일을 불러오는 중...</div>';
-        try {
-          const task = pdfjsLib.getDocument(arr);
-          pdfDoc = await task.promise;
-          pageCountSpan.textContent = pdfDoc.numPages;
-          currentPageNum = 1;
+      translationInner.innerHTML = '<div class="muted">PDF 파일을 불러오는 중...</div>';
 
-          // 첫 페이지는 가로폭 맞춤
-          scaleMode = 'fit-width';
-          await renderPage(currentPageNum);
-        } catch (err) {
-          console.error('PDF 로딩 오류:', err);
-          translationInner.innerHTML = '<div class="muted">PDF 로딩 실패.</div>';
-        }
-      };
-      fr.readAsArrayBuffer(file);
+      try{
+        await ensurePdfJs(); // 동적 import
+        const fr = new FileReader();
+        fr.onload = async (evt) => {
+          const arr = new Uint8Array(evt.target.result);
+          try {
+            const task = pdfjsLib.getDocument(arr);
+            pdfDoc = await task.promise;
+            pageCountSpan.textContent = pdfDoc.numPages;
+            currentPageNum = 1;
+            scaleMode = 'fit-width';
+            await renderPage(currentPageNum);
+          } catch (err) {
+            console.error('PDF 로딩 오류:', err);
+            translationInner.innerHTML = '<div class="muted">PDF 로딩 실패.</div>';
+          }
+        };
+        fr.readAsArrayBuffer(file);
+      }catch{
+        // ensurePdfJs에서 이미 안내함
+      }
     });
 
-    // 배율 UI
+    // 배율 UI/유틸
     function updateZoomUI(){
       zoomPercent.textContent = Math.round(scale * 100);
       zoomModeBadge.textContent = (scaleMode === 'fit-width') ? '맞춤' : '수동';
     }
     function clamp(num, min, max){ return Math.max(min, Math.min(max, num)); }
-
     async function computeFitWidthScale(page){
       const baseViewport = page.getViewport({ scale: 1.0 });
       const containerWidth = document.getElementById('pdf-viewer').clientWidth - 4;
@@ -239,7 +253,7 @@
 
         const viewport = page.getViewport({ scale });
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: false });
+        const ctx = canvas.getContext('2d');
         canvas.width = viewport.width; canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport }).promise;
 
@@ -252,7 +266,7 @@
         nextPageBtn.disabled = (num >= pdfDoc.numPages);
         updateZoomUI();
 
-        // 추출 → 문단화 → 번역(JSONP)
+        // 텍스트 추출 → 문단화 → 번역(JSONP)
         translationInner.innerHTML = `<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
         const textContent = await page.getTextContent();
         const laidOut = buildLaidOutText(textContent);
@@ -283,10 +297,10 @@
     nextPageBtn.addEventListener('click', () => { if (pdfDoc && currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
     targetLangSelect.addEventListener('change', () => { if (pdfDoc) renderPage(currentPageNum); });
 
-    zoomInBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
-    zoomOutBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
-    zoomResetBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); });
-    zoomFitBtn.addEventListener('click',   ()=>{ scaleMode='fit-width'; renderPage(currentPageNum); });
+    zoomInBtn.addEventListener('click', ()=>{ if (!pdfDoc) return; scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
+    zoomOutBtn.addEventListener('click', ()=>{ if (!pdfDoc) return; scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
+    zoomResetBtn.addEventListener('click', ()=>{ if (!pdfDoc) return; scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); });
+    zoomFitBtn.addEventListener('click',   ()=>{ if (!pdfDoc) return; scaleMode='fit-width'; renderPage(currentPageNum); });
 
     document.getElementById('pdf-viewer').addEventListener('wheel', (e)=>{
       if (!pdfDoc) return;
@@ -303,7 +317,7 @@
       if (pdfDoc && scaleMode === 'fit-width') renderPage(currentPageNum);
     });
 
-    // ====== 가독성 유틸 ======
+    // ===== 가독성 유틸 =====
     function buildLaidOutText(textContent){
       const items = textContent.items || [];
       const lines = [];
