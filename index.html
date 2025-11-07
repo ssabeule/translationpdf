@@ -3,68 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (선택 번역 지원)</title>
+  <title>PDF 실시간 번역 뷰어 (선택 번역)</title>
   <style>
-    :root {
-      --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff;
-      --border:#e0e0e0; --muted:#777; --text:#222;
-    }
+    :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#222; }
     *{box-sizing:border-box}
-    body{
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
-      margin:0; display:flex; flex-direction:column; height:100vh; background:var(--bg); color:var(--text)
-    }
-    #header{
-      background:#fff; padding:10px 16px; display:flex; align-items:center; gap:12px;
-      border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10
-    }
-    #header h1{margin:0; font-size:1.05rem; font-weight:700}
-    #controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;margin:0;display:flex;flex-direction:column;height:100vh;background:var(--bg);color:var(--text)}
+    #header{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+    #header h1{margin:0;font-size:1.05rem;font-weight:700}
+    #controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     #controls input[type="file"]{display:none}
-    .btn{
-      background:var(--brand); color:#fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; font-size:.9rem
-    }
-    .btn:disabled{background:#a0a0a0; cursor:not-allowed}
+    .btn{background:var(--brand);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem}
+    .btn:disabled{background:#a0a0a0;cursor:not-allowed}
     .btn:hover:not(:disabled){background:var(--brand-dark)}
-    .pill{display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--border); padding:6px 8px; border-radius:8px}
+    .pill{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);padding:6px 8px;border-radius:8px}
     .pill input[type="range"]{width:120px}
-    select{padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:#fff}
-    #container{flex:1; display:flex; gap:14px; padding:14px; min-height:0}
-    #pdf-viewer-container,#translation-container{
-      flex:1; background:var(--panel); border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.08);
-      display:flex; flex-direction:column; min-height:0; overflow:hidden
-    }
-    .panel-header{padding:10px 14px; background:#f8f9fa; border-bottom:1px solid var(--border); font-weight:700; color:#555}
-    #pdf-viewer{flex:1; overflow:auto; padding:10px}
-    /* 한 페이지를 감싸는 래퍼: 캔버스 + 텍스트 레이어 겹침 */
-    .page-wrap{position:relative; width:fit-content; margin:0 auto}
-    .text-layer{
-      position:absolute; left:0; top:0; right:0; bottom:0;
-      pointer-events:auto; color:transparent; /* 선택 가능하지만 글자색은 안 보이게 */
-      user-select:text; -webkit-user-select:text; -ms-user-select:text;
-    }
-    .text-layer span{
-      position:absolute; white-space:pre; transform-origin:0% 0%;
-      /* 시각적으로 안 보이되, 선택/복사는 되게 */
-      color:transparent; background:transparent;
-    }
-    /* 선택 번역 버튼(플로팅) */
-    #sel-action{
-      position:absolute; z-index:20; display:none;
-      background:#111; color:#fff; padding:6px 10px; border-radius:8px; font-size:.85rem;
-      box-shadow:0 2px 8px rgba(0,0,0,.25);
-    }
-    #translation-output{
-      flex:1; overflow:auto; padding:18px; line-height:1.75; letter-spacing:.2px; color:#222;
-      display:flex; justify-content:center
-    }
-    .translation-inner{
-      width:100%; max-width:var(--colWidth, 800px); font-size:var(--fontSize, 17px);
-      white-space:pre-wrap; word-break:keep-all
-    }
+    select{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+    #container{flex:1;display:flex;gap:14px;padding:14px;min-height:0}
+    #pdf-viewer-container,#translation-container{flex:1;background:var(--panel);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+    .panel-header{padding:10px 14px;background:#f8f9fa;border-bottom:1px solid var(--border);font-weight:700;color:#555}
+    #pdf-viewer{flex:1;overflow:auto;padding:10px}
+    .page-wrap{position:relative;width:fit-content;margin:0 auto}
+    .text-layer{position:absolute;inset:0;pointer-events:auto;color:transparent;user-select:text;-webkit-user-select:text}
+    .text-layer span{position:absolute;white-space:pre;transform-origin:0 0;color:transparent;background:transparent}
+    #sel-action{position:absolute;z-index:20;display:none;background:#111;color:#fff;padding:6px 10px;border-radius:8px;font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    #translation-output{flex:1;overflow:auto;padding:18px;line-height:1.75;letter-spacing:.2px;color:#222;display:flex;justify-content:center}
+    .translation-inner{width:100%;max-width:var(--colWidth,800px);font-size:var(--fontSize,17px);white-space:pre-wrap;word-break:keep-all}
     .translation-inner p{margin:0 0 1em}
-    .muted{font-size:1.02rem; color:var(--muted); text-align:center; margin-top:38px}
-    canvas{display:block; max-width:100%; box-shadow:0 0 10px rgba(0,0,0,.08)}
+    .muted{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
+    canvas{display:block;max-width:100%;box-shadow:0 0 10px rgba(0,0,0,.08)}
   </style>
 </head>
 <body>
@@ -73,62 +39,41 @@
     <div id="controls">
       <label class="btn" for="file-input">PDF 파일 선택</label>
       <input type="file" id="file-input" accept=".pdf"/>
-
       <div class="pill">
         <button id="prev-page" class="btn" disabled>이전</button>
         <span>페이지 <span id="page-num">0</span>/<span id="page-count">0</span></span>
         <button id="next-page" class="btn" disabled>다음</button>
       </div>
-
       <select id="target-lang" title="번역 언어">
-        <option value="ko">한국어</option>
-        <option value="en">영어</option>
-        <option value="ja">일본어</option>
-        <option value="zh-CN">중국어(간체)</option>
-        <option value="es">스페인어</option>
+        <option value="ko">한국어</option><option value="en">영어</option><option value="ja">일본어</option><option value="zh-CN">중국어(간체)</option><option value="es">스페인어</option>
       </select>
-
-      <div class="pill">
-        <span>글자</span>
-        <input id="font-size" type="range" min="14" max="24" value="17">
-      </div>
-      <div class="pill">
-        <span>열폭</span>
-        <input id="col-width" type="range" min="600" max="1000" value="800">
-      </div>
+      <div class="pill"><span>글자</span><input id="font-size" type="range" min="14" max="24" value="17"></div>
+      <div class="pill"><span>열폭</span><input id="col-width" type="range" min="600" max="1000" value="800"></div>
     </div>
   </div>
 
   <div id="container">
     <div id="pdf-viewer-container">
       <div class="panel-header">원본 PDF</div>
-      <div id="pdf-viewer">
-        <div class="muted">오른쪽에서 PDF 파일을 선택하세요.</div>
-      </div>
-      <!-- 선택 번역 버튼(마우스 드래그 후 나타남) -->
+      <div id="pdf-viewer"><div class="muted">오른쪽에서 PDF 파일을 선택하세요.</div></div>
       <div id="sel-action">선택 번역</div>
     </div>
-
     <div id="translation-container">
       <div class="panel-header">번역 결과</div>
-      <div id="translation-output">
-        <div class="translation-inner" id="translation-inner">
-          <div class="muted">PDF를 선택하면 번역이 표시됩니다.</div>
-        </div>
-      </div>
+      <div id="translation-output"><div class="translation-inner" id="translation-inner"><div class="muted">PDF를 선택하면 번역이 표시됩니다.</div></div></div>
     </div>
   </div>
 
   <script type="module">
-    /* ★ 네 최신 /exec 주소 */
-    const APPS_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
+    // ★ 네 최신 /exec 주소
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
 
-    /* 같은 출처 pdf.js (lib 폴더 필요) */
+    // 로컬 lib/의 동일 버전 파일 3종 사용
     import * as pdfjsLib from './lib/pdf.mjs';
+    import { renderTextLayer } from './lib/pdf_viewer.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
 
-    // DOM
+    // ===== UI refs
     const fileInput = document.getElementById('file-input');
     const pdfViewer = document.getElementById('pdf-viewer');
     const translationInner = document.getElementById('translation-inner');
@@ -141,225 +86,168 @@
     const colWidthRange = document.getElementById('col-width');
     const selAction = document.getElementById('sel-action');
 
-    // 상태
-    let pdfDoc = null, currentPageNum = 1, isRendering = false, queuedPage = null;
+    let pdfDoc=null, currentPageNum=1, isRendering=false, queuedPage=null;
 
-    // 텍스트/레이아웃 설정
-    function applyReaderStyle() {
-      translationInner.style.setProperty('--fontSize', fontSizeRange.value + 'px');
-      translationInner.style.setProperty('--colWidth', colWidthRange.value + 'px');
+    function applyReaderStyle(){
+      translationInner.style.setProperty('--fontSize', fontSizeRange.value+'px');
+      translationInner.style.setProperty('--colWidth', colWidthRange.value+'px');
     }
     fontSizeRange.addEventListener('input', applyReaderStyle);
     colWidthRange.addEventListener('input', applyReaderStyle);
     applyReaderStyle();
 
-    // JSONP 유틸(스크립트 주입 → CORS 우회)
-    function jsonp(url, params = {}) {
-      return new Promise((resolve, reject) => {
-        const cbName = '__jsonp_cb_' + Math.random().toString(36).slice(2);
-        const qs = new URLSearchParams({ ...params, callback: cbName, _t: Date.now() }).toString();
-        const script = document.createElement('script');
-        script.src = url + '?' + qs;
-        script.async = true;
-
-        window[cbName] = (data) => { cleanup(); resolve(data); };
-        script.onerror = () => { cleanup(); reject(new Error('JSONP load error')); };
-        function cleanup(){ delete window[cbName]; script.remove(); }
-
-        document.head.appendChild(script);
+    // JSONP (CORS 회피)
+    function jsonp(url, params={}){
+      return new Promise((resolve, reject)=>{
+        const cb='__jsonp_cb_'+Math.random().toString(36).slice(2);
+        const qs=new URLSearchParams({...params, callback:cb, _t:Date.now()}).toString();
+        const s=document.createElement('script');
+        s.src=url+'?'+qs; s.async=true;
+        window[cb]=(data)=>{cleanup(); resolve(data);};
+        s.onerror=()=>{cleanup(); reject(new Error('JSONP load error'));};
+        function cleanup(){ delete window[cb]; s.remove(); }
+        document.head.appendChild(s);
       });
     }
-
-    async function translateText(textToTranslate, targetLang) {
-      const data = await jsonp(APPS_SCRIPT_URL, { text: textToTranslate, targetLang });
-      return (data && data.translatedText) ? data.translatedText : (data && data.error ? ('번역 오류: ' + data.error) : '');
+    async function translateText(text, lang){
+      const data = await jsonp(APPS_SCRIPT_URL, { text, targetLang: lang });
+      return data?.translatedText ?? (data?.error ? `번역 오류: ${data.error}` : '');
     }
 
-    // 파일 선택
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files?.[0];
-      if (!file || file.type !== 'application/pdf') { alert('PDF 파일만 선택하세요.'); return; }
-      const fr = new FileReader();
-      fr.onload = async (evt) => {
-        const arr = new Uint8Array(evt.target.result);
-        translationInner.innerHTML = '<div class="muted">PDF 파일을 불러오는 중...</div>';
-        try {
-          const loadingTask = pdfjsLib.getDocument(arr);
-          pdfDoc = await loadingTask.promise;
-          pageCountSpan.textContent = pdfDoc.numPages;
-          currentPageNum = 1;
-          queuedPage = null;
+    fileInput.addEventListener('change', (e)=>{
+      const file=e.target.files?.[0];
+      if(!file || file.type!=='application/pdf'){ alert('PDF 파일만 선택하세요.'); return; }
+      const fr=new FileReader();
+      fr.onload=async(evt)=>{
+        const arr=new Uint8Array(evt.target.result);
+        translationInner.innerHTML='<div class="muted">PDF 파일을 불러오는 중...</div>';
+        try{
+          const task=pdfjsLib.getDocument(arr);
+          pdfDoc=await task.promise;
+          pageCountSpan.textContent=pdfDoc.numPages;
+          currentPageNum=1; queuedPage=null;
           await renderPage(currentPageNum);
-        } catch (err) {
+        }catch(err){
           console.error('PDF 로딩 오류:', err);
-          translationInner.innerHTML = '<div class="muted">PDF 로딩 실패.</div>';
+          translationInner.innerHTML='<div class="muted">PDF 로딩 실패.</div>';
         }
       };
       fr.readAsArrayBuffer(file);
     });
 
-    // 렌더 큐
-    async function requestRender(num) {
-      if (!pdfDoc) return;
-      num = Math.max(1, Math.min(num, pdfDoc.numPages));
-      if (isRendering) { queuedPage = num; return; }
+    async function requestRender(num){
+      if(!pdfDoc) return;
+      num=Math.max(1, Math.min(num, pdfDoc.numPages));
+      if(isRendering){ queuedPage=num; return; }
       await renderPage(num);
-      if (queuedPage && queuedPage !== num) {
-        const next = queuedPage; queuedPage = null;
-        await requestRender(next);
-      }
+      if(queuedPage && queuedPage!==num){ const n=queuedPage; queuedPage=null; await requestRender(n); }
     }
 
-    // 페이지 렌더 + 텍스트 레이어 + 전체 번역
-    async function renderPage(num) {
-      if (!pdfDoc) return;
-      isRendering = true;
-      hideSelAction();
+    async function renderPage(num){
+      if(!pdfDoc) return;
+      isRendering=true; hideSelAction();
 
-      try {
-        const page = await pdfDoc.getPage(num);
-        const viewport = page.getViewport({ scale: 1.8 });
+      try{
+        const page=await pdfDoc.getPage(num);
+        const viewport=page.getViewport({ scale:1.8 });
 
-        // 한 페이지 컨테이너: 캔버스 + 텍스트 레이어
-        const wrap = document.createElement('div');
-        wrap.className = 'page-wrap';
-        wrap.style.width = viewport.width + 'px';
-        wrap.style.height = viewport.height + 'px';
+        const wrap=document.createElement('div');
+        wrap.className='page-wrap';
+        wrap.style.width=viewport.width+'px';
+        wrap.style.height=viewport.height+'px';
 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = viewport.width; canvas.height = viewport.height;
+        const canvas=document.createElement('canvas');
+        const ctx=canvas.getContext('2d');
+        canvas.width=viewport.width; canvas.height=viewport.height;
+        await page.render({ canvasContext:ctx, viewport }).promise;
 
-        // 먼저 캔버스 렌더
-        await page.render({ canvasContext: ctx, viewport }).promise;
-
-        // 텍스트 레이어 렌더 (선택 가능)
-        const textLayer = document.createElement('div');
-        textLayer.className = 'text-layer';
-
-        const textContent = await page.getTextContent();
-        await pdfjsLib.renderTextLayer({
-          textContent,
-          container: textLayer,
-          viewport,
-          textDivs: []
-        }).promise;
+        const textLayer=document.createElement('div');
+        textLayer.className='text-layer';
+        const textContent=await page.getTextContent();
+        await renderTextLayer({ textContent, container:textLayer, viewport, textDivs:[] }).promise;
 
         wrap.appendChild(canvas);
         wrap.appendChild(textLayer);
+        pdfViewer.innerHTML=''; pdfViewer.appendChild(wrap);
 
-        pdfViewer.innerHTML = '';
-        pdfViewer.appendChild(wrap);
-
-        // 네비 업데이트
-        currentPageNum = num;
-        pageNumSpan.textContent = String(num);
-        prevPageBtn.disabled = (num <= 1);
-        nextPageBtn.disabled = (num >= pdfDoc.numPages);
+        currentPageNum=num;
+        pageNumSpan.textContent=String(num);
+        prevPageBtn.disabled=(num<=1);
+        nextPageBtn.disabled=(num>=pdfDoc.numPages);
 
         // 전체 번역
-        translationInner.innerHTML = `<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
-        const raw = (textContent.items.map(it => it.str).join(' ') || '').trim();
-        if (!raw) {
-          translationInner.innerHTML = '<div class="muted">이 페이지에는 번역할 텍스트가 없습니다.</div>';
-        } else {
-          const pretty = prettify(raw);
-          const chunks = splitIntoChunks(pretty, 4500);
-          const out = [];
-          for (let i = 0; i < chunks.length; i++) {
-            const part = await translateText(chunks[i], targetLangSelect.value);
-            out.push(part || '');
-            translationInner.innerHTML = `<div class="muted">번역 중... (${i+1}/${chunks.length})</div>`;
+        translationInner.innerHTML=`<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
+        const raw=(textContent.items.map(it=>it.str).join(' ')||'').trim();
+        if(!raw){ translationInner.innerHTML='<div class="muted">이 페이지에는 번역할 텍스트가 없습니다.</div>'; }
+        else{
+          const pretty=prettify(raw);
+          const chunks=splitIntoChunks(pretty, 4500);
+          const out=[];
+          for(let i=0;i<chunks.length;i++){
+            const part=await translateText(chunks[i], targetLangSelect.value);
+            out.push(part||'');
+            translationInner.innerHTML=`<div class="muted">번역 중... (${i+1}/${chunks.length})</div>`;
           }
-          const html = out.join('\n').split(/\n{2,}/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join('');
-          translationInner.innerHTML = html || '<div class="muted">빈 결과</div>';
-          document.getElementById('translation-output').scrollTop = 0;
+          const html=out.join('\n').split(/\n{2,}/).map(p=>`<p>${escapeHtml(p.trim())}</p>`).join('');
+          translationInner.innerHTML=html||'<div class="muted">빈 결과</div>';
+          document.getElementById('translation-output').scrollTop=0;
         }
 
-        // === 선택 번역: 마우스 드래그 후 플로팅 버튼 노출 ===
-        textLayer.addEventListener('mouseup', (ev) => {
-          const sel = window.getSelection();
-          const txt = sel ? String(sel).trim() : '';
-          if (txt && txt.length > 0) {
-            // 선택 영역 근처에 버튼 표시
-            const range = sel.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
-            const hostRect = pdfViewer.getBoundingClientRect();
-            showSelAction(rect.left - hostRect.left, rect.top - hostRect.top - 36, txt);
-          } else {
-            hideSelAction();
-          }
+        textLayer.addEventListener('mouseup', ()=>{
+          const sel=window.getSelection();
+          const txt=sel?String(sel).trim():'';
+          if(txt){
+            const rect=sel.getRangeAt(0).getBoundingClientRect();
+            const host=pdfViewer.getBoundingClientRect();
+            showSelAction(rect.left-host.left, rect.top-host.top-36, txt);
+          } else { hideSelAction(); }
         });
 
-      } catch (err) {
-        console.error(`페이지 ${num} 렌더링 오류:`, err);
-        translationInner.innerHTML = `<div class="muted">페이지 ${num} 표시/번역 실패</div>`;
-      } finally {
-        isRendering = false;
-      }
+      }catch(err){
+        console.error(`페이지 ${num} 표시/번역 실패:`, err);
+        translationInner.innerHTML=`<div class="muted">페이지 ${num} 표시/번역 실패</div>`;
+      }finally{ isRendering=false; }
     }
 
-    // 선택 번역 플로팅 버튼
-    function showSelAction(x, y, text) {
-      selAction.style.left = Math.max(8, x) + 'px';
-      selAction.style.top  = Math.max(8, y) + 'px';
-      selAction.style.display = 'block';
-      selAction.onclick = async () => {
-        selAction.textContent = '번역 중...';
-        const out = await translateText(text, targetLangSelect.value);
-        // 선택 번역 결과를 상단에 강조해서 표시
-        const block = `<p><strong>선택 번역</strong></p><p>${escapeHtml(out || '(빈 결과)')}</p><hr/>`;
-        translationInner.innerHTML = block + translationInner.innerHTML;
-        selAction.textContent = '선택 번역';
+    function showSelAction(x,y,text){
+      selAction.style.left=Math.max(8,x)+'px';
+      selAction.style.top=Math.max(8,y)+'px';
+      selAction.style.display='block';
+      selAction.onclick=async()=>{
+        selAction.textContent='번역 중...';
+        const out=await translateText(text, targetLangSelect.value);
+        translationInner.innerHTML=`<p><strong>선택 번역</strong></p><p>${escapeHtml(out||'(빈 결과)')}</p><hr/>`+translationInner.innerHTML;
+        selAction.textContent='선택 번역';
         hideSelAction();
       };
     }
-    function hideSelAction(){ selAction.style.display = 'none'; }
+    function hideSelAction(){ selAction.style.display='none'; }
 
-    // 유틸
-    function splitIntoChunks(text, maxLen = 4500) {
-      const sentences = text.split(/(?<=[.!?。！？])\s+/);
-      const chunks = []; let buf = '';
-      for (const s of sentences) {
-        if ((buf + ' ' + s).trim().length <= maxLen) buf = (buf ? buf + ' ' : '') + s;
-        else {
-          if (buf) chunks.push(buf);
-          if (s.length > maxLen) { for (let i = 0; i < s.length; i += maxLen) chunks.push(s.slice(i, i + maxLen)); buf = ''; }
-          else { buf = s; }
-        }
+    function splitIntoChunks(text,maxLen=4500){
+      const sentences=text.split(/(?<=[.!?。！？])\s+/); const chunks=[]; let buf='';
+      for(const s of sentences){
+        if((buf+' '+s).trim().length<=maxLen) buf=(buf?buf+' ':'')+s;
+        else{ if(buf) chunks.push(buf); if(s.length>maxLen){ for(let i=0;i<s.length;i+=maxLen) chunks.push(s.slice(i,i+maxLen)); buf=''; } else { buf=s; } }
       }
-      if (buf) chunks.push(buf);
-      return chunks;
+      if(buf) chunks.push(buf); return chunks;
     }
-
-    function prettify(t) {
-      let s = t.replace(/\s+/g,' ').trim();
-      s = s.replace(/([.!?。！？])\s+/g, '$1  \n');  // 문장 끝나면 두 칸+줄바꿈
-      s = s.replace(/([:;])\s+/g, '$1 \n');        // 콜론/세미콜론 후 줄바꿈
-      s = s.replace(/\s+([)\]])/g, '$1');          // 괄호 앞 공백 정리
-      s = s.split('\n').reduce((acc, line) => {
-        const L = line.trim();
-        if (!acc.length) return [L];
-        if (L.length < 40 && !/[.!?。！？]$/.test(L)) { acc[acc.length-1] += ' ' + L; }
-        else acc.push(L);
-        return acc;
-      }, []).join('\n\n');
+    function prettify(t){
+      let s=t.replace(/\s+/g,' ').trim();
+      s=s.replace(/([.!?。！？])\s+/g,'$1  \n').replace(/([:;])\s+/g,'$1 \n').replace(/\s+([)\]])/g,'$1');
+      s=s.split('\n').reduce((a,l)=>{const L=l.trim(); if(!a.length) return [L]; if(L.length<40 && !/[.!?。！？]$/.test(L)) a[a.length-1]+=' '+L; else a.push(L); return a;},[]).join('\n\n');
       return s;
     }
-    function escapeHtml(str){
-      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-    }
+    function escapeHtml(str){ return str.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-    // 버튼 & 키보드
-    prevPageBtn.addEventListener('click', () => requestRender(currentPageNum - 1));
-    nextPageBtn.addEventListener('click', () => requestRender(currentPageNum + 1));
-    targetLangSelect.addEventListener('change', () => requestRender(currentPageNum));
-    window.addEventListener('keydown', (e) => {
-      if (!pdfDoc) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); requestRender(currentPageNum + 1); }
-      if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   { e.preventDefault(); requestRender(currentPageNum - 1); }
-      if (e.key === 'Home') { e.preventDefault(); requestRender(1); }
-      if (e.key === 'End')  { e.preventDefault(); requestRender(pdfDoc.numPages); }
+    prevPageBtn.addEventListener('click',()=>requestRender(currentPageNum-1));
+    nextPageBtn.addEventListener('click',()=>requestRender(currentPageNum+1));
+    targetLangSelect.addEventListener('change',()=>requestRender(currentPageNum));
+    window.addEventListener('keydown',e=>{
+      if(!pdfDoc) return;
+      if(e.key==='ArrowRight'||e.key==='PageDown'){e.preventDefault();requestRender(currentPageNum+1);}
+      if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();requestRender(currentPageNum-1);}
+      if(e.key==='Home'){e.preventDefault();requestRender(1);}
+      if(e.key==='End'){e.preventDefault();requestRender(pdfDoc.numPages);}
     });
   </script>
 </body>
