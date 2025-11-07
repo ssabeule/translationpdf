@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (가독성+줌·JSONP)</title>
+  <title>PDF 실시간 번역 뷰어 (업로드 안정화)</title>
 
-  <!-- 캐시 약화 -->
+  <!-- 캐시 약화(선택) -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
@@ -19,7 +19,6 @@
     #brand h1{margin:0;font-size:1.06rem;font-weight:700}
     #meta{font-size:.85rem;color:#666}
     #controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    #controls input[type="file"]{display:none}
     .btn{background:var(--brand);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font-size:.9rem}
     .btn:disabled{background:#a0a0a0;cursor:not-allowed}
     .btn:hover:not(:disabled){background:var(--brand-dark)}
@@ -38,19 +37,12 @@
     .muted{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
     footer{padding:10px 16px;color:#666;font-size:.85rem;border-top:1px solid var(--border);text-align:right;background:#fff}
     .badge{font-size:.8rem;color:#333;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:4px 8px}
+    .hide{display:none}
   </style>
 
   <script>
-    // 자동 버전 쿼리스트링 부착 → 캐시 우회
-    const BUILD_VERSION = '2025-11-08-zoom-01';
-    (function ensureVersionParam(){
-      const url = new URL(location.href);
-      const v = url.searchParams.get('v');
-      if (v !== BUILD_VERSION) {
-        url.searchParams.set('v', BUILD_VERSION);
-        location.replace(url.toString());
-      }
-    })();
+    // 캐시 버전(모듈 임포트에만 사용)
+    window.BUILD_VERSION = '2025-11-08-fix-upload-01';
   </script>
 </head>
 <body>
@@ -60,8 +52,9 @@
       <span id="meta">제작자 문태정 · v<span id="ver"></span></span>
     </div>
     <div id="controls">
-      <label class="btn" for="file-input">PDF 파일 선택</label>
-      <input type="file" id="file-input" accept=".pdf"/>
+      <!-- 실제 input은 화면에서 숨기고, 버튼으로 클릭 유도 -->
+      <input type="file" id="file-input" class="hide" accept=".pdf,application/pdf"/>
+      <button id="open-file" class="btn" type="button">PDF 파일 선택</button>
 
       <div class="pill">
         <button id="prev-page" class="btn" disabled>이전</button>
@@ -92,7 +85,6 @@
     <div id="pdf-viewer-container">
       <div class="panel-header">
         <span>원본 PDF</span>
-        <!-- 🔍 확대/축소 툴바 -->
         <div id="pdf-toolbar">
           <button id="zoom-out" class="btn" title="축소">－</button>
           <span class="badge"><span id="zoom-percent">100</span>%</span>
@@ -118,11 +110,11 @@
   <footer>제작자 문태정 · v<span id="ver2"></span></footer>
 
   <script type="module">
-    // 버전 텍스트 표시
+    // 버전 텍스트
     document.getElementById('ver').textContent =
       document.getElementById('ver2').textContent = (window.BUILD_VERSION || 'dev');
 
-    /* ★ 최신 /exec 주소(네 배포 주소로 유지) */
+    /* ★ 네 최신 /exec 주소 */
     const APPS_SCRIPT_URL =
       "https://script.google.com/macros/s/AKfycbwzvhcUBXumoOm6KHaCNWvtW23KFakzfAJgKFLrPali56q0a2yiRLSpBfsY25t8Yp_CJw/exec";
 
@@ -132,6 +124,7 @@
 
     // DOM
     const fileInput = document.getElementById('file-input');
+    const openFileBtn = document.getElementById('open-file');
     const pdfViewer = document.getElementById('pdf-viewer');
     const translationInner = document.getElementById('translation-inner');
     const pageNumSpan = document.getElementById('page-num');
@@ -142,7 +135,6 @@
     const fontSizeRange = document.getElementById('font-size');
     const colWidthRange = document.getElementById('col-width');
 
-    // 🔍 줌 관련
     const zoomOutBtn = document.getElementById('zoom-out');
     const zoomInBtn  = document.getElementById('zoom-in');
     const zoomResetBtn = document.getElementById('zoom-reset');
@@ -151,9 +143,12 @@
     const zoomModeBadge = document.getElementById('zoom-mode');
 
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
-    let scale = 1.0;                 // 현재 배율(1.0 = 100%)
+    let scale = 1.0;
     let scaleMode = 'manual';        // 'manual' | 'fit-width'
     const SCALE_MIN = 0.5, SCALE_MAX = 3.0, SCALE_STEP = 0.1;
+
+    // 파일 선택 버튼 → input 클릭
+    openFileBtn.addEventListener('click', () => fileInput.click());
 
     // 가독성 슬라이더
     function applyReaderStyle(){
@@ -164,7 +159,7 @@
     colWidthRange.addEventListener('input', applyReaderStyle);
     applyReaderStyle();
 
-    // JSONP 유틸 (CORS 우회)
+    // JSONP (CORS 우회)
     function jsonp(url, params = {}){
       return new Promise((resolve, reject)=>{
         const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
@@ -193,7 +188,9 @@
     // 파일 선택
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
-      if (!file || file.type !== 'application/pdf') { alert('PDF 파일만 선택하세요.'); return; }
+      if (!file) return;
+      if (file.type && !/pdf/i.test(file.type)) { alert('PDF 파일만 선택하세요.'); return; }
+
       const fr = new FileReader();
       fr.onload = async (evt) => {
         const arr = new Uint8Array(evt.target.result);
@@ -204,9 +201,9 @@
           pageCountSpan.textContent = pdfDoc.numPages;
           currentPageNum = 1;
 
-          // 첫 페이지에서 가로폭 맞춤 계산
+          // 첫 페이지는 가로폭 맞춤
           scaleMode = 'fit-width';
-          await renderPage(currentPageNum); // renderPage 내부에서 fit-width 계산
+          await renderPage(currentPageNum);
         } catch (err) {
           console.error('PDF 로딩 오류:', err);
           translationInner.innerHTML = '<div class="muted">PDF 로딩 실패.</div>';
@@ -215,18 +212,16 @@
       fr.readAsArrayBuffer(file);
     });
 
-    // 배율 표시/모드 배지
+    // 배율 UI
     function updateZoomUI(){
       zoomPercent.textContent = Math.round(scale * 100);
       zoomModeBadge.textContent = (scaleMode === 'fit-width') ? '맞춤' : '수동';
     }
-
     function clamp(num, min, max){ return Math.max(min, Math.min(max, num)); }
 
-    // fit-width 계산 : 페이지 원본 폭 대비 viewport컨테이너 폭
     async function computeFitWidthScale(page){
       const baseViewport = page.getViewport({ scale: 1.0 });
-      const containerWidth = document.getElementById('pdf-viewer').clientWidth - 4; // 패딩여백 여유
+      const containerWidth = document.getElementById('pdf-viewer').clientWidth - 4;
       const s = clamp(containerWidth / baseViewport.width, SCALE_MIN, SCALE_MAX);
       return s || 1.0;
     }
@@ -238,15 +233,13 @@
 
       try {
         const page = await pdfDoc.getPage(num);
-
-        // 모드가 맞춤이면 스케일 재계산
         if (scaleMode === 'fit-width') {
           scale = await computeFitWidthScale(page);
         }
 
         const viewport = page.getViewport({ scale });
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: false });
         canvas.width = viewport.width; canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport }).promise;
 
@@ -259,7 +252,7 @@
         nextPageBtn.disabled = (num >= pdfDoc.numPages);
         updateZoomUI();
 
-        // 텍스트 추출 → 레이아웃 보정 → 번역(JSONP)
+        // 추출 → 문단화 → 번역(JSONP)
         translationInner.innerHTML = `<div class="muted">번역 중... (페이지 ${num}/${pdfDoc.numPages})</div>`;
         const textContent = await page.getTextContent();
         const laidOut = buildLaidOutText(textContent);
@@ -285,18 +278,16 @@
       }
     }
 
-    // 네비
+    // 네비 & 줌
     prevPageBtn.addEventListener('click', () => { if (currentPageNum > 1) renderPage(currentPageNum - 1); });
     nextPageBtn.addEventListener('click', () => { if (pdfDoc && currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
     targetLangSelect.addEventListener('change', () => { if (pdfDoc) renderPage(currentPageNum); });
 
-    // 🔍 줌 버튼/단축키
     zoomInBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
     zoomOutBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); });
     zoomResetBtn.addEventListener('click', ()=>{ scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); });
     zoomFitBtn.addEventListener('click',   ()=>{ scaleMode='fit-width'; renderPage(currentPageNum); });
 
-    // Ctrl + 마우스휠로 확대/축소
     document.getElementById('pdf-viewer').addEventListener('wheel', (e)=>{
       if (!pdfDoc) return;
       if (e.ctrlKey || e.metaKey) {
@@ -308,21 +299,8 @@
       }
     }, { passive:false });
 
-    // 창 크기 변경 시 맞춤 모드면 재렌더
     window.addEventListener('resize', ()=>{
       if (pdfDoc && scaleMode === 'fit-width') renderPage(currentPageNum);
-    });
-
-    window.addEventListener('keydown', (e) => {
-      if (!pdfDoc) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); nextPageBtn.click(); }
-      if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   { e.preventDefault(); prevPageBtn.click(); }
-      if (e.key === '+') { scaleMode='manual'; scale = clamp(scale + SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); }
-      if (e.key === '-') { scaleMode='manual'; scale = clamp(scale - SCALE_STEP, SCALE_MIN, SCALE_MAX); renderPage(currentPageNum); }
-      if (e.key === '0') { scaleMode='manual'; scale = 1.0; renderPage(currentPageNum); }
-      if (e.key.toLowerCase() === 'f') { scaleMode='fit-width'; renderPage(currentPageNum); } // f: 맞춤
-      if (e.key === 'Home') { e.preventDefault(); renderPage(1); }
-      if (e.key === 'End')  { e.preventDefault(); renderPage(pdfDoc.numPages); }
     });
 
     // ====== 가독성 유틸 ======
