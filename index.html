@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF 실시간 번역 뷰어 (같은 출처 로드)</title>
+  <title>PDF 실시간 번역 뷰어 (텍스트+OCR 자동)</title>
   <style>
     :root { --brand:#007bff; --brand-dark:#0056b3; --bg:#f4f7f9; --panel:#fff; --border:#e0e0e0; --muted:#777; --text:#333; }
     *{box-sizing:border-box}
@@ -24,7 +24,10 @@
     #translation-output{flex:1;padding:16px;overflow:auto;font-size:1.02rem;line-height:1.7;white-space:pre-wrap;color:#333}
     .loader-text{font-size:1.02rem;color:var(--muted);text-align:center;margin-top:38px}
     canvas{display:block;margin:0 auto;max-width:100%;box-shadow:0 0 10px rgba(0,0,0,.08)}
+    .hint{font-size:.85rem;color:#666;margin-left:8px}
   </style>
+  <!-- OCR 라이브러리 (일반 <script>는 CORS 문제 없음) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <div id="header">
@@ -44,6 +47,16 @@
         <option value="zh-CN">중국어(간체)</option>
         <option value="es">스페인어</option>
       </select>
+      <label class="hint">
+        OCR 언어:
+        <select id="ocr-lang">
+          <option value="eng">eng(영어)</option>
+          <option value="kor">kor(한국어)</option>
+          <option value="jpn">jpn(일본어)</option>
+          <option value="chi_sim">chi_sim(중국어 간체)</option>
+          <option value="spa">spa(스페인어)</option>
+        </select>
+      </label>
     </div>
   </div>
 
@@ -59,10 +72,10 @@
   </div>
 
   <script type="module">
-    /* 네 Google Apps Script /exec 주소 */
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby0HztO0l8d7jElgunieZ-KlSrd07-yt7kxQKDXQ3T2VdpldvLM_s0TFaVyhmax2YXRYA/exec";
+    /* ① 네 Google Apps Script /exec 주소로 바꿔 넣기 */
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2qmZg2voGlAu_UlxKC4NFQkfeNc4ouhvPY7TNffR-roCjHkW1DjI_uCyOmOHc4Z2AKQ/exec";
 
-    /* 외부 CDN 쓰지 말고, 저장소(lib/)에 올린 파일을 같은 출처로 임포트 */
+    /* ② pdf.js를 “같은 출처(lib/)”에서 로드 → CORS 문제 없음 */
     import * as pdfjsLib from './lib/pdf.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.mjs';
 
@@ -75,6 +88,7 @@
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
     const targetLangSelect = document.getElementById('target-lang');
+    const ocrLangSelect = document.getElementById('ocr-lang');
 
     let pdfDoc = null, currentPageNum = 1, isRendering = false;
 
@@ -100,7 +114,7 @@
       fr.readAsArrayBuffer(file);
     });
 
-    // 페이지 렌더 + 번역
+    // 페이지 렌더 + 텍스트 추출(없으면 OCR) + 번역
     async function renderPage(num) {
       if (!pdfDoc || isRendering) return;
       isRendering = true;
@@ -116,21 +130,35 @@
         pdfViewer.innerHTML = ''; pdfViewer.appendChild(canvas);
         pageNumSpan.textContent = String(num);
 
-        translationOutput.innerHTML = '<div class="loader-text">번역 중...</div>';
-        const textContent = await page.getTextContent();
-        const text = textContent.items.map(it => it.str).join(' ').trim();
+        translationOutput.innerHTML = '<div class="loader-text">텍스트 추출 중...</div>';
+
+        // 1) pdf.js 텍스트 추출
+        let text = '';
+        try {
+          const textContent = await page.getTextContent();
+          text = textContent.items.map(it => it.str).join(' ').trim();
+        } catch {}
+
+        // 2) 추출 텍스트가 없으면 OCR 실행
+        if (!text) {
+          translationOutput.innerHTML = '<div class="loader-text">스캔본 감지 → OCR 중...</div>';
+          text = await ocrFromCanvas(canvas, ocrLangSelect.value);
+        }
 
         if (!text) {
-          translationOutput.innerHTML = '<div class="loader-text">이 페이지에는 번역할 텍스트가 없습니다.</div>';
-        } else {
-          const chunks = splitIntoChunks(text, 4500);
-          const out = [];
-          for (let i = 0; i < chunks.length; i++) {
-            out.push(await translateText(chunks[i], targetLangSelect.value) || '');
-            translationOutput.innerHTML = `<div class="loader-text">번역 중... (${i+1}/${chunks.length})</div>`;
-          }
-          translationOutput.textContent = out.join('\n');
+          translationOutput.innerHTML = '<div class="loader-text">이 페이지에서 읽을 텍스트를 찾지 못했습니다.</div>';
+          return;
         }
+
+        // 3) 번역
+        translationOutput.innerHTML = '<div class="loader-text">번역 중...</div>';
+        const chunks = splitIntoChunks(text, 4500);
+        const out = [];
+        for (let i = 0; i < chunks.length; i++) {
+          out.push(await translateText(chunks[i], targetLangSelect.value) || '');
+          translationOutput.innerHTML = `<div class="loader-text">번역 중... (${i+1}/${chunks.length})</div>`;
+        }
+        translationOutput.textContent = out.join('\n');
       } catch (err) {
         console.error(`페이지 ${num} 렌더링 오류:`, err);
         translationOutput.innerHTML = `<div class="loader-text">페이지 ${num} 표시/번역 실패</div>`;
@@ -142,7 +170,6 @@
       nextPageBtn.disabled = num >= (pdfDoc?.numPages || 0);
     }
 
-    // 문장 경계 우선 청크 분할
     function splitIntoChunks(text, maxLen = 4500) {
       const sentences = text.split(/(?<=[.!?。！？])\s+/);
       const chunks = []; let buf = '';
@@ -156,9 +183,22 @@
       return chunks;
     }
 
-    // 번역 호출
+    async function ocrFromCanvas(canvas, lang) {
+      try {
+        const { data: { text } } = await Tesseract.recognize(canvas, lang, {
+          // 한국어 OCR이 필요하면 위 셀렉트에서 'kor' 선택
+          // 처음 사용할 때 언어 데이터 다운받느라 조금 느릴 수 있음
+        });
+        return (text || '').trim();
+      } catch (e) {
+        console.error('OCR 오류:', e);
+        return '';
+      }
+    }
+
     async function translateText(textToTranslate, targetLang) {
       try {
+        // JSON으로 POST (GAS 코드가 doPost로 JSON 받도록 작성됨)
         const res = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -175,7 +215,6 @@
       }
     }
 
-    // 페이지 이동/언어 변경
     prevPageBtn.addEventListener('click', () => { if (currentPageNum > 1) { currentPageNum--; renderPage(currentPageNum); } });
     nextPageBtn.addEventListener('click', () => { if (pdfDoc && currentPageNum < pdfDoc.numPages) { currentPageNum++; renderPage(currentPageNum); } });
     targetLangSelect.addEventListener('change', () => { if (pdfDoc) renderPage(currentPageNum); });
